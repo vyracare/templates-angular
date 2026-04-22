@@ -27,6 +27,8 @@
 							}
 						],
 						"styles": [
+							"node_modules/@vyracare/design-system/styles/_index.scss",
+							"node_modules/bootstrap-icons/font/bootstrap-icons.css",
 							"src/styles.scss"
 						],
 						"main": "src/main.ts",
@@ -93,6 +95,8 @@
 							}
 						],
 						"styles": [
+							"node_modules/@vyracare/design-system/styles/_index.scss",
+							"node_modules/bootstrap-icons/font/bootstrap-icons.css",
 							"src/styles.scss"
 						]
 					}
