@@ -1,6 +1,6 @@
 name: "🚀 Criar Angular MFE"
 description: "Cria um novo microfrontend Angular baseado no template Angular"
-title: "create:[NOME-DO-PROJETO]"
+title: "create: novo angular mfe"
 labels: ["automation", "angular", "mfe"]
 body:
   - type: input

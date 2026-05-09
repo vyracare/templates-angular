@@ -7,54 +7,181 @@ on:
 jobs:
   create-repo:
     runs-on: ubuntu-latest
-    if: startsWith(github.event.issue.title, 'create:')
+    if: contains(github.event.issue.body, '### Nome do projeto')
     env:
       GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+      TEMPLATE_REPOSITORY: ${{ github.repository }}
+      ISSUE_BODY: ${{ github.event.issue.body }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - name: Extrair nome do projeto da issue
-        id: extract
+      - name: Comentar inicio da automacao
+        shell: bash
         run: |
-          ISSUE_TITLE="${{ github.event.issue.title }}"
-          PROJECT_NAME=$(echo "$ISSUE_TITLE" | sed 's/^create://')
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "${TEMPLATE_REPOSITORY}" \
+            --body-file - <<EOF
+          A automacao de criacao do Angular MFE foi iniciada.
 
-          # Verifica se o repositório já existe
-          if gh repo view "vyracare/$PROJECT_NAME" >/dev/null 2>&1; then
-            TIMESTAMP=$(date +%Y%m%d%H%M%S)
-            PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
-            echo "O repositório original já existe. Novo nome: $PROJECT_NAME"
+          Acompanhe a execucao aqui: ${RUN_URL}
+          EOF
+
+      - name: Extrair dados da issue
+        shell: bash
+        run: |
+          python <<'PY'
+          import os
+          import re
+          import sys
+
+          body = os.environ["ISSUE_BODY"]
+          env_path = os.environ["GITHUB_ENV"]
+
+          def write_failure(message: str) -> None:
+            with open(env_path, "a", encoding="utf-8") as env_file:
+              env_file.write(f"FAILURE_REASON={message}\n")
+            raise SystemExit(message)
+
+          def extract_field(title: str) -> str:
+            pattern = rf"### {re.escape(title)}\s*\n(.*?)(?=\n### |\Z)"
+            match = re.search(pattern, body, re.S)
+            if not match:
+              write_failure(f"Campo nao encontrado na issue: {title}")
+            return match.group(1).strip()
+
+          def extract_optional_field(*titles: str) -> str:
+            for title in titles:
+              pattern = rf"### {re.escape(title)}\s*\n(.*?)(?=\n### |\Z)"
+              match = re.search(pattern, body, re.S)
+              if match:
+                return match.group(1).strip()
+            return ""
+
+          def normalize_kebab(value: str) -> str:
+            value = value.strip().lower()
+            value = re.sub(r"[^a-z0-9]+", "-", value)
+            value = re.sub(r"-{2,}", "-", value).strip("-")
+            return value
+
+          project_name_raw = extract_field("Nome do projeto")
+          project_name = normalize_kebab(project_name_raw)
+          description = extract_optional_field("Descricao do MFE", "Descrição do MFE", "DescriÃ§Ã£o do MFE")
+          description = description.replace("\r", " ").strip()
+
+          if not project_name or "nome-do-projeto" in project_name:
+            write_failure("Nome do projeto invalido. Preencha o campo 'Nome do projeto' da issue com um valor real.")
+
+          with open(env_path, "a", encoding="utf-8") as env_file:
+            env_file.write(f"PROJECT_NAME={project_name}\n")
+            env_file.write("PROJECT_CREATED=false\n")
+            env_file.write(f"PROJECT_DESCRIPTION<<EOF\n{description}\nEOF\n")
+          PY
+
+      - name: Validar nome do repositorio
+        shell: bash
+        run: |
+          if gh repo view "vyracare/${PROJECT_NAME}" >/dev/null 2>&1; then
+            echo "FAILURE_REASON=Ja existe um repositorio com o nome ${PROJECT_NAME}." >> "$GITHUB_ENV"
+            exit 1
           fi
 
-          echo "PROJECT_NAME=$PROJECT_NAME" >> $GITHUB_ENV
-          echo "project-name=$PROJECT_NAME" >> $GITHUB_OUTPUT
-
-      - name: Criar repositório do template
+      - name: Criar repositorio do template
+        shell: bash
         run: |
-          gh repo create vyracare/$PROJECT_NAME \
+          gh repo create "vyracare/${PROJECT_NAME}" \
             --private \
-            --template "vyracare/repo-template-angular" \
+            --template "${TEMPLATE_REPOSITORY}" \
             --clone
 
-      - name: Rodar script de rename
-        run: |
-          cd $PROJECT_NAME
-          chmod +x rename-angular-project.sh
-          ./rename-angular-project.sh $PROJECT_NAME
+          if [ -n "${PROJECT_DESCRIPTION:-}" ]; then
+            gh repo edit "vyracare/${PROJECT_NAME}" --description "${PROJECT_DESCRIPTION}"
+          fi
 
-      - name: Commit e push das mudanças
+          echo "PROJECT_CREATED=true" >> "$GITHUB_ENV"
+
+      - name: Rodar script de rename
+        shell: bash
         run: |
-          cd $PROJECT_NAME
+          cd "${PROJECT_NAME}"
+          chmod +x rename-angular-project.sh
+          ./rename-angular-project.sh "${PROJECT_NAME}"
+
+      - name: Commit e push das mudancas
+        shell: bash
+        run: |
+          cd "${PROJECT_NAME}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/vyracare/$PROJECT_NAME.git
-          rm -f rename-angular-project.sh create-angular-project.yml
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/vyracare/${PROJECT_NAME}.git"
+
+          rm -rf .github/ISSUE_TEMPLATE
           rm -f .github/workflows/create-angular-project.yml
+          rm -f rename-angular-project.sh
+
           git add .
-          git commit -m "chore: rename Angular project to $PROJECT_NAME" || echo "Nada para commitar"
+          git commit -m "chore: inicializa ${PROJECT_NAME} a partir do template" || echo "Nada para commitar"
           git push origin main
 
-      - name: Comentar na issue
+      - name: Comentar sucesso
+        if: success()
+        shell: bash
         run: |
-          gh issue comment ${{ github.event.issue.number }} \
-            --repo vyracare/repo-template-angular \
-            --body "✅ O repositório **$PROJECT_NAME** foi criado com sucesso: https://github.com/vyracare/$PROJECT_NAME"
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "${TEMPLATE_REPOSITORY}" \
+            --body-file - <<EOF
+          O Angular MFE **${PROJECT_NAME}** foi criado com sucesso.
 
+          Repositorio: https://github.com/vyracare/${PROJECT_NAME}
+          Execucao: ${RUN_URL}
+          EOF
+
+      - name: Fechar issue com sucesso
+        if: success()
+        shell: bash
+        run: |
+          gh issue close "${{ github.event.issue.number }}" \
+            --repo "${TEMPLATE_REPOSITORY}" \
+            --comment "Issue encerrada automaticamente apos a criacao bem-sucedida do Angular MFE."
+
+      - name: Rollback do repositorio criado
+        id: rollback
+        if: failure() && env.PROJECT_CREATED == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          if gh repo delete "vyracare/${PROJECT_NAME}" --yes; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comentar falha
+        if: failure()
+        shell: bash
+        run: |
+          ROLLBACK_MESSAGE="Nenhum repositorio precisou ser removido."
+          if [ "${PROJECT_CREATED:-false}" = "true" ] && [ "${{ steps.rollback.outputs.status }}" = "success" ]; then
+            ROLLBACK_MESSAGE="O rollback removeu o repositorio criado e retornou o contexto ao estado inicial."
+          elif [ "${PROJECT_CREATED:-false}" = "true" ] && [ "${{ steps.rollback.outputs.status }}" = "failed" ]; then
+            ROLLBACK_MESSAGE="O rollback foi iniciado, mas a exclusao do repositorio falhou. Verifique se o token PAT_TOKEN possui o escopo delete_repo."
+          fi
+
+          FAILURE_DETAILS="${FAILURE_REASON:-Falha durante a execucao da automacao.}"
+
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "${TEMPLATE_REPOSITORY}" \
+            --body-file - <<EOF
+          A automacao falhou durante a criacao do Angular MFE.
+
+          Execucao: ${RUN_URL}
+          Motivo: ${FAILURE_DETAILS}
+
+          ${ROLLBACK_MESSAGE}
+          EOF
+
+      - name: Fechar issue com falha
+        if: failure()
+        shell: bash
+        run: |
+          gh issue close "${{ github.event.issue.number }}" \
+            --repo "${TEMPLATE_REPOSITORY}" \
+            --comment "Issue encerrada automaticamente apos falha na criacao do Angular MFE. Verifique o comentario anterior para o motivo e o status do rollback."
