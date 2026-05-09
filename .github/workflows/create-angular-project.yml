@@ -121,6 +121,13 @@ jobs:
           git commit -m "chore: inicializa ${PROJECT_NAME} a partir do template" || echo "Nada para commitar"
           git push origin main
 
+      - name: Criar branch develop
+        shell: bash
+        run: |
+          cd "${PROJECT_NAME}"
+          git checkout -b develop
+          git push -u origin develop
+
       - name: Comentar sucesso
         if: success()
         shell: bash
