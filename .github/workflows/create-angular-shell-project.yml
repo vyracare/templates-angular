@@ -1,16 +1,17 @@
-name: Create Project Angular MFE
+name: Create Angular Shell
 
 on:
   issues:
     types: [opened]
 
 jobs:
-  create-repo:
+  create-shell:
     runs-on: ubuntu-latest
-    if: contains(github.event.issue.body, '### Nome do projeto') && !contains(github.event.issue.body, '### Nome do projeto do shell')
+    if: contains(github.event.issue.body, '### Nome do projeto do shell')
     env:
       GH_TOKEN: ${{ secrets.PAT_TOKEN }}
       TEMPLATE_REPOSITORY: ${{ github.repository }}
+      SOURCE_SHELL_REPOSITORY: vyracare/vyracare-app-shell
       ISSUE_BODY: ${{ github.event.issue.body }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
@@ -20,7 +21,7 @@ jobs:
           gh issue comment "${{ github.event.issue.number }}" \
             --repo "${TEMPLATE_REPOSITORY}" \
             --body-file - <<EOF
-          A automacao de criacao do Angular MFE foi iniciada.
+          A automacao de criacao do shell Angular foi iniciada.
 
           Acompanhe a execucao aqui: ${RUN_URL}
           EOF
@@ -35,7 +36,7 @@ jobs:
           body = os.environ["ISSUE_BODY"]
           env_path = os.environ["GITHUB_ENV"]
 
-          def write_failure(message: str) -> None:
+          def fail(message: str) -> None:
             with open(env_path, "a", encoding="utf-8") as env_file:
               env_file.write(f"FAILURE_REASON={message}\n")
             raise SystemExit(message)
@@ -44,16 +45,8 @@ jobs:
             pattern = rf"### {re.escape(title)}\s*\n(.*?)(?=\n### |\Z)"
             match = re.search(pattern, body, re.S)
             if not match:
-              write_failure(f"Campo nao encontrado na issue: {title}")
+              fail(f"Campo nao encontrado na issue: {title}")
             return match.group(1).strip()
-
-          def extract_optional_field(*titles: str) -> str:
-            for title in titles:
-              pattern = rf"### {re.escape(title)}\s*\n(.*?)(?=\n### |\Z)"
-              match = re.search(pattern, body, re.S)
-              if match:
-                return match.group(1).strip()
-            return ""
 
           def normalize_kebab(value: str) -> str:
             value = value.strip().lower()
@@ -61,47 +54,18 @@ jobs:
             value = re.sub(r"-{2,}", "-", value).strip("-")
             return value
 
-          def normalize_repository(value: str) -> str:
-            value = value.strip().lower()
-            if not value:
-              return ""
-            if "/" in value:
-              owner, repo = value.split("/", 1)
-              return f"{normalize_kebab(owner)}/{normalize_kebab(repo)}"
-            return f"vyracare/{normalize_kebab(value)}"
+          project_name = normalize_kebab(extract_field("Nome do projeto do shell"))
+          description_match = re.search(r"### Descricao do shell\s*\n(.*?)(?=\n### |\Z)", body, re.S)
+          description = description_match.group(1).replace("\r", " ").strip() if description_match else ""
 
-          def derive_remote_entry_property(project_name: str) -> str:
-            mfe_name = project_name
-            if mfe_name.startswith("vyracare-app-"):
-              mfe_name = mfe_name[len("vyracare-app-"):]
-            if mfe_name.endswith("-mfe"):
-              mfe_name = mfe_name[:-len("-mfe")]
-
-            tokens = [token for token in mfe_name.split("-") if token]
-            if not tokens:
-              return "remoteEntry"
-
-            head, *tail = tokens
-            return head + "".join(token.capitalize() for token in tail) + "RemoteEntry"
-
-          project_name = normalize_kebab(extract_field("Nome do projeto"))
-          shell_repository = normalize_repository(
-            extract_optional_field("Repositorio do shell orquestrador")
-          )
-          remote_entry_property = derive_remote_entry_property(project_name)
-          description = extract_optional_field("Descricao do MFE")
-          description = description.replace("\r", " ").strip()
-
-          if not project_name or "nome-do-projeto" in project_name:
-            write_failure(
-              "Nome do projeto invalido. Preencha o campo 'Nome do projeto' da issue com um valor real."
+          if not project_name or "nome-do-shell" in project_name:
+            fail(
+              "Nome do shell invalido. Preencha o campo 'Nome do projeto do shell' com um valor real."
             )
 
           with open(env_path, "a", encoding="utf-8") as env_file:
             env_file.write(f"PROJECT_NAME={project_name}\n")
             env_file.write("PROJECT_CREATED=false\n")
-            env_file.write(f"SHELL_REPOSITORY={shell_repository}\n")
-            env_file.write(f"REMOTE_ENTRY_PROPERTY={remote_entry_property}\n")
             env_file.write(f"PROJECT_DESCRIPTION<<EOF\n{description}\nEOF\n")
           PY
 
@@ -113,13 +77,10 @@ jobs:
             exit 1
           fi
 
-      - name: Criar repositorio do template
+      - name: Criar repositorio do shell
         shell: bash
         run: |
-          gh repo create "vyracare/${PROJECT_NAME}" \
-            --public \
-            --template "${TEMPLATE_REPOSITORY}" \
-            --clone
+          gh repo create "vyracare/${PROJECT_NAME}" --public --clone
 
           if [ -n "${PROJECT_DESCRIPTION:-}" ]; then
             gh repo edit "vyracare/${PROJECT_NAME}" --description "${PROJECT_DESCRIPTION}"
@@ -127,25 +88,23 @@ jobs:
 
           echo "PROJECT_CREATED=true" >> "$GITHUB_ENV"
 
-      - name: Rodar script de rename
+      - name: Copiar estrutura base do shell
         shell: bash
         run: |
-          cd "${PROJECT_NAME}"
-          chmod +x rename-angular-project.sh
-          ./rename-angular-project.sh "${PROJECT_NAME}"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${SOURCE_SHELL_REPOSITORY}.git" shell-source
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude 'dist' \
+            --exclude 'coverage' \
+            --exclude '.angular' \
+            "shell-source/" "${PROJECT_NAME}/"
 
-      - name: Gerar configuracao do shell orquestrador
-        if: env.SHELL_REPOSITORY != ''
+      - name: Renomear shell
         shell: bash
         run: |
-          mkdir -p "${PROJECT_NAME}/.vyracare"
-          cat <<EOF > "${PROJECT_NAME}/.vyracare/orchestrator-shell.json"
-          {
-            "repository": "${SHELL_REPOSITORY}",
-            "environmentFile": "src/environments/environments.prod.ts",
-            "remoteEntryProperty": "${REMOTE_ENTRY_PROPERTY}"
-          }
-          EOF
+          chmod +x rename-angular-shell-project.sh
+          ./rename-angular-shell-project.sh "${PROJECT_NAME}" "${PROJECT_NAME}"
 
       - name: Commit e push das mudancas
         shell: bash
@@ -154,15 +113,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/vyracare/${PROJECT_NAME}.git"
-
-          rm -rf .github/ISSUE_TEMPLATE
-          rm -f .github/workflows/create-angular-project.yml
-          rm -f .github/workflows/create-angular-shell-project.yml
-          rm -f rename-angular-project.sh
-          rm -f rename-angular-shell-project.sh
-
           git add .
-          git commit -m "chore: inicializa ${PROJECT_NAME} a partir do template" || echo "Nada para commitar"
+          git commit -m "chore: inicializa ${PROJECT_NAME} a partir do shell base"
           git push origin main
 
       - name: Criar branch develop
@@ -179,7 +131,7 @@ jobs:
           gh issue comment "${{ github.event.issue.number }}" \
             --repo "${TEMPLATE_REPOSITORY}" \
             --body-file - <<EOF
-          O Angular MFE **${PROJECT_NAME}** foi criado com sucesso.
+          O shell Angular **${PROJECT_NAME}** foi criado com sucesso.
 
           Repositorio: https://github.com/vyracare/${PROJECT_NAME}
           Execucao: ${RUN_URL}
@@ -191,7 +143,7 @@ jobs:
         run: |
           gh issue close "${{ github.event.issue.number }}" \
             --repo "${TEMPLATE_REPOSITORY}" \
-            --comment "Issue encerrada automaticamente apos a criacao bem-sucedida do Angular MFE."
+            --comment "Issue encerrada automaticamente apos a criacao bem-sucedida do shell Angular."
 
       - name: Rollback do repositorio criado
         id: rollback
@@ -221,7 +173,7 @@ jobs:
           gh issue comment "${{ github.event.issue.number }}" \
             --repo "${TEMPLATE_REPOSITORY}" \
             --body-file - <<EOF
-          A automacao falhou durante a criacao do Angular MFE.
+          A automacao falhou durante a criacao do shell Angular.
 
           Execucao: ${RUN_URL}
           Motivo: ${FAILURE_DETAILS}
@@ -235,4 +187,4 @@ jobs:
         run: |
           gh issue close "${{ github.event.issue.number }}" \
             --repo "${TEMPLATE_REPOSITORY}" \
-            --comment "Issue encerrada automaticamente apos falha na criacao do Angular MFE. Verifique o comentario anterior para o motivo e o status do rollback."
+            --comment "Issue encerrada automaticamente apos falha na criacao do shell Angular. Verifique o comentario anterior para o motivo e o status do rollback."

@@ -1,4 +1,4 @@
-name: "🚀 Criar Angular MFE"
+name: "Create Angular MFE"
 description: "Cria um novo microfrontend Angular baseado no template Angular"
 title: "create: novo angular mfe"
 labels: ["automation", "angular", "mfe"]
@@ -7,16 +7,25 @@ body:
     id: project-name
     attributes:
       label: Nome do projeto
-      description: 'Digite o nome do projeto no formato kebab-case (ex: `vyracare-app-profile-mfe`)'
+      description: "Digite o nome do projeto no formato kebab-case (ex: `vyracare-app-profile-mfe`)"
       placeholder: vyracare-app-[nome-do-projeto]-mfe
     validations:
       required: true
 
+  - type: input
+    id: shell-repository
+    attributes:
+      label: Repositorio do shell orquestrador
+      description: "Opcional. Informe o repositorio do shell que consumira este MFE (ex: `vyracare-app-shell` ou `vyracare/meu-shell`)."
+      placeholder: vyracare-app-shell
+    validations:
+      required: false
+
   - type: textarea
     id: description
     attributes:
-      label: Descrição do MFE
+      label: Descricao do MFE
       description: Explique brevemente a finalidade do microfrontend
-      placeholder: "Esse microfrontend será responsável por..."
+      placeholder: "Esse microfrontend sera responsavel por..."
     validations:
       required: false

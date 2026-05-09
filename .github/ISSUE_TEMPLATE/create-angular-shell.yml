@@ -1,0 +1,22 @@
+name: "Create Angular Shell"
+description: "Cria um novo shell orquestrador Angular baseado na estrutura do vyracare-app-shell"
+title: "create: novo angular shell"
+labels: ["automation", "angular", "shell"]
+body:
+  - type: input
+    id: project-name
+    attributes:
+      label: Nome do projeto do shell
+      description: "Digite o nome do repositorio no formato kebab-case (ex: `vyracare-app-shell-admin`)."
+      placeholder: vyracare-app-[nome-do-shell]
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Descricao do shell
+      description: Explique brevemente a finalidade do shell orquestrador
+      placeholder: "Esse shell sera responsavel por..."
+    validations:
+      required: false
