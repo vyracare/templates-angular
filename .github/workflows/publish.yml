@@ -3,7 +3,8 @@ name: PUBLISH
 on:
   push:
     branches:
-      - develop  # Dispara quando houver merge na develop
+      - develop
+      - main
 
 jobs:
   publish:
