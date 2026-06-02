@@ -3,103 +3,12 @@ name: PUBLISH
 on:
   push:
     branches:
-      - develop
-      - release
-      - 'release/**'
       - main
 
 jobs:
-  create-release-branch:
-    name: Create versioned release branch
+  publish:
+    name: Skip AWS deploy for template repository
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
-    outputs:
-      branch: ${{ steps.release_branch.outputs.branch }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          token: ${{ secrets.PAT_TOKEN }}
-
-      - name: Create or reuse release branch
-        id: release_branch
-        run: |
-          set -euo pipefail
-          RELEASE_BRANCH="release/v$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
-          git fetch origin main develop
-          if git ls-remote --heads origin "$RELEASE_BRANCH" | grep -q "$RELEASE_BRANCH"; then
-            git checkout -B "$RELEASE_BRANCH" "origin/$RELEASE_BRANCH"
-          else
-            git checkout -B "$RELEASE_BRANCH" "origin/main"
-            git push -u origin "$RELEASE_BRANCH"
-          fi
-          echo "branch=$RELEASE_BRANCH" >> $GITHUB_OUTPUT
-
-  open-pr-release:
-    name: Open Pull Request to versioned release
-    runs-on: ubuntu-latest
-    needs: create-release-branch
-    if: github.ref == 'refs/heads/develop'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          token: ${{ secrets.PAT_TOKEN }}
-
-      - name: Open Pull Request to release
-        uses: repo-sync/pull-request@v2
-        with:
-          github_token: ${{ secrets.PAT_TOKEN }}
-          source_branch: develop
-          destination_branch: ${{ needs.create-release-branch.outputs.branch }}
-          pr_title: "PR automatic develop into ${{ needs.create-release-branch.outputs.branch }}"
-          pr_body: |
-            PR automatica criada pelo pipeline.
-            Branch de origem: `develop`
-            Destino: `${{ needs.create-release-branch.outputs.branch }}`
-
-  open-pr-main:
-    name: Open Pull Request to main
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/heads/release/')
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          token: ${{ secrets.PAT_TOKEN }}
-
-      - name: Detect whether release branch is ahead of main
-        id: release_diff
-        run: |
-          set -euo pipefail
-          git fetch origin main "${{ github.ref_name }}"
-          git checkout -B "${{ github.ref_name }}" "origin/${{ github.ref_name }}"
-          ahead_count=$(git rev-list --count origin/main..HEAD)
-          echo "ahead_count=$ahead_count" >> $GITHUB_OUTPUT
-          if [ "$ahead_count" -gt 0 ]; then
-            echo "should_open=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_open=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Open Pull Request to main
-        if: steps.release_diff.outputs.should_open == 'true'
-        uses: repo-sync/pull-request@v2
-        with:
-          github_token: ${{ secrets.PAT_TOKEN }}
-          source_branch: ${{ github.ref_name }}
-          destination_branch: main
-          pr_title: "PR automatic ${{ github.ref_name }} into main"
-          pr_body: |
-            PR automatica criada pelo pipeline.
-            Branch de origem: `${{ github.ref_name }}`
-            Destino: `main`
+      - name: Skip deploy
+        run: echo "Template repository does not publish to AWS on main."
