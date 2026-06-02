@@ -46,6 +46,13 @@ jobs:
     needs: create-release-branch
     if: github.ref == 'refs/heads/develop'
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.PAT_TOKEN }}
+
       - name: Open Pull Request to release
         uses: repo-sync/pull-request@v2
         with:
