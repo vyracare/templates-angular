@@ -82,6 +82,28 @@
 							"outputHashing": "all",
 							"extraWebpackConfig": "webpack.prod.config.js"
 						},
+						"dev": {
+							"fileReplacements": [
+								{
+									"replace": "src/environments/environments.ts",
+									"with": "src/environments/environments.dev.ts"
+								}
+							],
+							"budgets": [
+								{
+									"type": "initial",
+									"maximumWarning": "500kB",
+									"maximumError": "1MB"
+								},
+								{
+									"type": "anyComponentStyle",
+									"maximumWarning": "4kB",
+									"maximumError": "8kB"
+								}
+							],
+							"outputHashing": "all",
+							"extraWebpackConfig": "webpack.prod.config.js"
+						},
 						"development": {
 							"optimization": false,
 							"extractLicenses": false,
