@@ -39,6 +39,34 @@
 					},
 					"configurations": {
 						"production": {
+							"fileReplacements": [
+								{
+									"replace": "src/environments/environments.ts",
+									"with": "src/environments/environments.prod.ts"
+								}
+							],
+							"budgets": [
+								{
+									"type": "initial",
+									"maximumWarning": "500kB",
+									"maximumError": "1MB"
+								},
+								{
+									"type": "anyComponentStyle",
+									"maximumWarning": "4kB",
+									"maximumError": "8kB"
+								}
+							],
+							"outputHashing": "all",
+							"extraWebpackConfig": "webpack.prod.config.js"
+						},
+						"hml": {
+							"fileReplacements": [
+								{
+									"replace": "src/environments/environments.ts",
+									"with": "src/environments/environments.hml.ts"
+								}
+							],
 							"budgets": [
 								{
 									"type": "initial",
