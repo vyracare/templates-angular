@@ -35,10 +35,12 @@ if [ -d "projects/[name-generic]" ]; then
   mv "projects/[name-generic]" "projects/$NEW_NAME"
 fi
 
-grep -rl "\[name-generic\]" . | while read -r file; do
-  echo "Corrigindo import em $file"
-  sed -i "s/$GENERIC_NAME/$NEW_NAME/g" "$file"
-done
+while IFS= read -r -d '' file; do
+  if grep -q '\[name-generic\]' "$file"; then
+    echo "Corrigindo placeholder em $file"
+    sed -i "s/$GENERIC_NAME/$NEW_NAME/g" "$file"
+  fi
+done < <(find . -type d \( -name .git -o -name node_modules -o -name .angular -o -name dist -o -name coverage \) -prune -o -type f -print0)
 
 if [ -d ".github/workflows" ]; then
   cat > .github/workflows/publish.yml <<'EOF'

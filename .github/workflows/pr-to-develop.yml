@@ -9,20 +9,37 @@ on:
 
 jobs:
   ci-angular:
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
-    uses: vyracare/vyracare-infra-pipes-angular/.github/workflows/ci-angular.yml@main
-    with:
-      branch-name: ${{ github.ref_name }}
-      codeartifact-domain: vyracare-design-system
-      codeartifact-repo: vyracare-design-system
-      codeartifact-domain-owner: '510253726006'
-      aws-region: us-east-1
-    secrets:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      - name: Configure package registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="$(aws codeartifact get-repository-endpoint --domain vyracare-design-system --domain-owner 510253726006 --repository vyracare-design-system --format npm --region us-east-1 --query repositoryEndpoint --output text)"
+          token="$(aws codeartifact get-authorization-token --domain vyracare-design-system --domain-owner 510253726006 --region us-east-1 --query authorizationToken --output text)"
+          echo "::add-mask::$token"
+          host="${endpoint#https://}"
+          printf 'registry=https://registry.npmjs.org/\n@vyracare:registry=%s\n//%s:_authToken=%s\n' "$endpoint" "$host" "$token" > .npmrc
+      - name: Generate validation project
+        run: bash rename-angular-project.sh vyracare-template-validation
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Build generated project
+        run: npm run build -- --configuration production
+      - name: Test generated project
+        run: npm test -- --runInBand
 
   open-pr-develop:
     runs-on: ubuntu-latest
