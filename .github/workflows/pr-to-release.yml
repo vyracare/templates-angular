@@ -1,0 +1,69 @@
+name: PR TO RELEASE
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  prepare-release:
+    name: Skip AWS deploy for template repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip deploy
+        run: echo "Template repository does not publish to AWS on develop."
+
+  create-release-branch:
+    name: Create versioned release branch
+    runs-on: ubuntu-latest
+    needs: prepare-release
+    outputs:
+      branch: ${{ steps.release_branch.outputs.branch }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Create or reuse release branch
+        id: release_branch
+        run: |
+          set -euo pipefail
+          RELEASE_BRANCH="release/v$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin main develop
+          if git ls-remote --heads origin "$RELEASE_BRANCH" | grep -q "$RELEASE_BRANCH"; then
+            git checkout -B "$RELEASE_BRANCH" "origin/$RELEASE_BRANCH"
+          else
+            git checkout -B "$RELEASE_BRANCH" "origin/main"
+            git push -u origin "$RELEASE_BRANCH"
+          fi
+          echo "branch=$RELEASE_BRANCH" >> $GITHUB_OUTPUT
+
+  open-pr-release:
+    name: Open Pull Request to versioned release
+    runs-on: ubuntu-latest
+    needs: create-release-branch
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Open Pull Request to release
+        uses: repo-sync/pull-request@v2
+        with:
+          github_token: ${{ secrets.PAT_TOKEN }}
+          source_branch: develop
+          destination_branch: ${{ needs.create-release-branch.outputs.branch }}
+          pr_title: "PR automatic develop into ${{ needs.create-release-branch.outputs.branch }}"
+          pr_body: |
+            PR automatica criada pelo pipeline.
+            Branch de origem: `develop`
+            Destino: `${{ needs.create-release-branch.outputs.branch }}`

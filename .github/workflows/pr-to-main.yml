@@ -1,0 +1,71 @@
+name: PR TO MAIN
+
+on:
+  push:
+    branches:
+      - release
+      - 'release/**'
+
+jobs:
+  detect-release-diff:
+    name: Detect release diff against main
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.release_diff.outputs.should_run }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Detect whether release branch is ahead of main
+        id: release_diff
+        run: |
+          set -euo pipefail
+          git fetch origin main "${{ github.ref_name }}"
+          git checkout -B "${{ github.ref_name }}" "origin/${{ github.ref_name }}"
+          ahead_count=$(git rev-list --count origin/main..HEAD)
+          echo "ahead_count=$ahead_count" >> $GITHUB_OUTPUT
+          if [ "$ahead_count" -gt 0 ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+  validate-release:
+    name: Skip AWS deploy for template repository
+    runs-on: ubuntu-latest
+    needs: detect-release-diff
+    if: needs.detect-release-diff.outputs.should_run == 'true'
+    steps:
+      - name: Skip deploy
+        run: echo "Template repository does not publish to AWS on release."
+
+  open-pr-main:
+    name: Open Pull Request to main
+    runs-on: ubuntu-latest
+    needs:
+      - detect-release-diff
+      - validate-release
+    if: needs.detect-release-diff.outputs.should_run == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Open Pull Request to main
+        uses: repo-sync/pull-request@v2
+        with:
+          github_token: ${{ secrets.PAT_TOKEN }}
+          source_branch: ${{ github.ref_name }}
+          destination_branch: main
+          pr_title: "PR automatic ${{ github.ref_name }} into main"
+          pr_body: |
+            PR automatica criada pelo pipeline.
+            Branch de origem: `${{ github.ref_name }}`
+            Destino: `main`
